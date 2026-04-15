@@ -52,6 +52,23 @@ export function snapPositionToGrid(
   return [snappedX, 0, snappedZ];
 }
 
+export function clampPositionToPalletXZ(
+  position: [number, number, number],
+  dimensions: [number, number, number],
+  pallet: Pallet,
+): [number, number, number] {
+  const [x, y, z] = position;
+  const [w, _h, d] = dimensions;
+  const [pw, _ph, pd] = pallet.dimensions;
+
+  const maxX = Math.max(0, pw - w);
+  const maxZ = Math.max(0, pd - d);
+
+  const clampedX = Math.min(Math.max(x, 0), maxX);
+  const clampedZ = Math.min(Math.max(z, 0), maxZ);
+  return [clampedX, y, clampedZ];
+}
+
 export function isValidCartonPosition(
   carton: CartonInstance,
   position: [number, number, number],
@@ -68,6 +85,8 @@ export function getInvalidCartonPositionReason(
   presets: CartonPreset[],
 ): string | null {
   const dimensions = getCartonFootprint(carton, presets);
+  const [x, y, z] = position;
+  const [, h] = dimensions;
 
   if (!cartonFitsOnPallet(position, dimensions, pallet)) {
     return 'Cannot place carton: outside pallet bounds.';
@@ -76,15 +95,19 @@ export function getInvalidCartonPositionReason(
   for (const otherCarton of pallet.cartons) {
     if (otherCarton.id === carton.id) continue;
 
-    const [cx, _cy, cz] = otherCarton.palletPosition;
-    const [cw, _ch, cd] = getCartonFootprint(otherCarton, presets);
-    const [x, _y, z] = position;
+    const [cx, cy, cz] = otherCarton.palletPosition;
+    const [cw, ch, cd] = getCartonFootprint(otherCarton, presets);
 
     const overlapX = x < cx + cw + GAP && x + dimensions[0] + GAP > cx;
+    const overlapY = y < cy + ch && y + h > cy;
     const overlapZ = z < cz + cd + GAP && z + dimensions[2] + GAP > cz;
-    if (overlapX && overlapZ) {
+    if (overlapX && overlapY && overlapZ) {
       return `Cannot place carton: overlaps with "${otherCarton.label}".`;
     }
+  }
+
+  if (!hasSupportAtHeight(carton, position, pallet, presets)) {
+    return 'Cannot place carton: no support under base.';
   }
 
   return null;
@@ -108,16 +131,22 @@ export function nextCartonSlotOnPallet(
     return [0, 0, 0];
   }
 
+  const levels = collectBaseHeightsFromStack(pallet, presets);
+
   // Scan row by row (z), then column by column (x)
   // Use the carton's own footprint for grid pitch
   const rowPitch = cd + GAP;
   const colPitch = cw + GAP;
 
-  for (let z = 0; z <= pd - cd; z += rowPitch) {
-    for (let x = 0; x <= pw - cw; x += colPitch) {
-      const candidate: [number, number, number] = [x, 0, z];
-      if (slotIsFree(candidate, cartonDimensions, pallet, presets)) {
-        return candidate;
+  for (const y of levels) {
+    for (let z = 0; z <= pd - cd; z += rowPitch) {
+      for (let x = 0; x <= pw - cw; x += colPitch) {
+        const candidate: [number, number, number] = [x, y, z];
+        if (slotIsFree(candidate, cartonDimensions, pallet, presets)) {
+          if (hasSupportForDimensions(candidate, cartonDimensions, pallet, presets)) {
+            return candidate;
+          }
+        }
       }
     }
   }
@@ -158,17 +187,179 @@ function slotIsFree(
   pallet: Pallet,
   presets: CartonPreset[],
 ): boolean {
-  const [px, _py, pz] = position;
-  const [pw, _ph, pd] = dimensions;
+  const [px, py, pz] = position;
+  const [pw, ph, pd] = dimensions;
 
   for (const carton of pallet.cartons) {
     const [cx, _cy, cz] = carton.palletPosition;
-    const [cw, _ch, cd] = getCartonFootprint(carton, presets);
+    const [cw, ch, cd] = getCartonFootprint(carton, presets);
+    const cy = carton.palletPosition[1];
 
     // Overlap check (2D projection on pallet surface)
     const overlapX = px < cx + cw + GAP && px + pw + GAP > cx;
+    const overlapY = py < cy + ch && py + ph > cy;
     const overlapZ = pz < cz + cd + GAP && pz + pd + GAP > cz;
-    if (overlapX && overlapZ) {
+    if (overlapX && overlapY && overlapZ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function collectBaseHeightsFromStack(
+  pallet: Pallet,
+  presets: CartonPreset[],
+): number[] {
+  const levels = new Set<number>([0]);
+  for (const carton of pallet.cartons) {
+    const [, h] = getCartonFootprint(carton, presets);
+    levels.add(carton.palletPosition[1] + h);
+  }
+  return Array.from(levels).sort((a, b) => a - b);
+}
+
+export function resolveCartonPreviewPosition(
+  carton: CartonInstance,
+  position: [number, number, number],
+  pallet: Pallet,
+  presets: CartonPreset[],
+  preferredY: number,
+): [number, number, number] {
+  const [x, _y, z] = position;
+  const levels = getSupportedBaseHeightsAtXZ(carton, [x, z], pallet, presets);
+  const uniqueLevels = Array.from(new Set(levels)).sort((a, b) => a - b);
+
+  const levelsByProximity = uniqueLevels.sort(
+    (a, b) => Math.abs(a - preferredY) - Math.abs(b - preferredY),
+  );
+
+  for (const level of levelsByProximity) {
+    const candidate: [number, number, number] = [x, level, z];
+    if (isValidCartonPosition(carton, candidate, pallet, presets)) {
+      return candidate;
+    }
+  }
+
+  // Keep deterministic fallback even if invalid; UI will show reason.
+  const fallbackLevel = levelsByProximity[0] ?? 0;
+  return [x, fallbackLevel, z];
+}
+
+function getSupportedBaseHeightsAtXZ(
+  carton: CartonInstance,
+  positionXZ: [number, number],
+  pallet: Pallet,
+  presets: CartonPreset[],
+): number[] {
+  const [x, z] = positionXZ;
+  const dimensions = getCartonFootprint(carton, presets);
+  const heights = collectBaseHeightsFromStack(pallet, presets);
+  const supported: number[] = [];
+
+  for (const y of heights) {
+    if (hasSupportForDimensions([x, y, z], dimensions, pallet, presets, carton.id)) {
+      supported.push(y);
+    }
+  }
+
+  return supported;
+}
+
+function hasSupportAtHeight(
+  carton: CartonInstance,
+  position: [number, number, number],
+  pallet: Pallet,
+  presets: CartonPreset[],
+): boolean {
+  return hasSupportForDimensions(
+    position,
+    getCartonFootprint(carton, presets),
+    pallet,
+    presets,
+    carton.id,
+  );
+}
+
+type Rect2D = {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+};
+
+function hasSupportForDimensions(
+  position: [number, number, number],
+  dimensions: [number, number, number],
+  pallet: Pallet,
+  presets: CartonPreset[],
+  ignoreCartonId?: string,
+): boolean {
+  const [x, y, z] = position;
+  const [w, _h, d] = dimensions;
+  if (y === 0) return true;
+
+  const base: Rect2D = { x0: x, x1: x + w, z0: z, z1: z + d };
+  const supports: Rect2D[] = [];
+
+  for (const otherCarton of pallet.cartons) {
+    if (ignoreCartonId && otherCarton.id === ignoreCartonId) continue;
+    const [ox, oy, oz] = otherCarton.palletPosition;
+    const [ow, oh, od] = getCartonFootprint(otherCarton, presets);
+    const topY = oy + oh;
+    if (topY !== y) continue;
+
+    supports.push({
+      x0: ox,
+      x1: ox + ow,
+      z0: oz,
+      z1: oz + od,
+    });
+  }
+
+  return rectCoveredBySupports(base, supports);
+}
+
+function rectCoveredBySupports(base: Rect2D, supports: Rect2D[]): boolean {
+  const clipped = supports
+    .map((r) => ({
+      x0: Math.max(base.x0, r.x0),
+      x1: Math.min(base.x1, r.x1),
+      z0: Math.max(base.z0, r.z0),
+      z1: Math.min(base.z1, r.z1),
+    }))
+    .filter((r) => r.x1 > r.x0 && r.z1 > r.z0);
+
+  if (clipped.length === 0) return false;
+
+  const xs = Array.from(new Set([base.x0, base.x1, ...clipped.flatMap((r) => [r.x0, r.x1])])).sort(
+    (a, b) => a - b,
+  );
+
+  for (let i = 0; i < xs.length - 1; i += 1) {
+    const xStart = xs[i];
+    const xEnd = xs[i + 1];
+    if (xEnd <= xStart) continue;
+    const xMid = (xStart + xEnd) / 2;
+
+    const zIntervals = clipped
+      .filter((r) => r.x0 <= xMid && xMid < r.x1)
+      .map((r) => [r.z0, r.z1] as [number, number])
+      .sort((a, b) => a[0] - b[0]);
+
+    if (zIntervals.length === 0) return false;
+
+    let coveredUntil = base.z0;
+    for (const [z0, z1] of zIntervals) {
+      if (z0 > coveredUntil) {
+        return false;
+      }
+      coveredUntil = Math.max(coveredUntil, z1);
+      if (coveredUntil >= base.z1) {
+        break;
+      }
+    }
+    if (coveredUntil < base.z1) {
       return false;
     }
   }
@@ -184,9 +375,9 @@ export function cartonFitsOnPallet(
   dimensions: [number, number, number],
   pallet: Pallet,
 ): boolean {
-  const [x, _y, z] = position;
+  const [x, y, z] = position;
   const [w, _h, d] = dimensions;
   const [pw, _ph, pd] = pallet.dimensions;
 
-  return x >= 0 && z >= 0 && x + w <= pw && z + d <= pd;
+  return y >= 0 && x >= 0 && z >= 0 && x + w <= pw && z + d <= pd;
 }

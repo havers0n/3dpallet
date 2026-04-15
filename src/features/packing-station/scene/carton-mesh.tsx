@@ -5,8 +5,10 @@ import {
   getCartonDimensions,
   getCartonFootprint,
   snapPositionToGrid,
+  clampPositionToPalletXZ,
   isValidCartonPosition,
   getInvalidCartonPositionReason,
+  resolveCartonPreviewPosition,
 } from '../../../domain/packing/carton-layout';
 import type { CartonInstance, CartonPreset } from '../../../domain/packing/types';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -66,7 +68,7 @@ function CartonMeshItem({
   const [w, h, d] = getCartonFootprint(carton, presets);
   const [baseW, _baseH, baseD] = getCartonDimensions(carton, presets);
   const rotationY = ((carton.rotationDeg ?? 0) * Math.PI) / 180;
-  const yOffset = palletHeight + h / 2;
+  const yOffset = palletHeight + currentPositionY(carton, isDragging, previewPosition) + h / 2;
   const currentPosition = isDragging && previewPosition ? previewPosition : carton.palletPosition;
   const validPreview = previewPosition
     ? isValidCartonPosition(carton, previewPosition, pallet, presets)
@@ -104,15 +106,25 @@ function CartonMeshItem({
     if (!isDragging) return;
     event.stopPropagation();
 
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -yOffset);
+    const activeY = (previewPosition ?? carton.palletPosition)[1];
+    const dragPlaneY = palletHeight + activeY + h / 2;
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -dragPlaneY);
     const intersection = new THREE.Vector3();
     if (!event.ray.intersectPlane(plane, intersection)) return;
 
-    const candidate: [number, number, number] = snapPositionToGrid([
+    const snappedXZ: [number, number, number] = snapPositionToGrid([
       intersection.x - w / 2,
-      0,
+      activeY,
       intersection.z - d / 2,
     ]);
+    const boundedXZ = clampPositionToPalletXZ(snappedXZ, [w, h, d], pallet);
+    const candidate = resolveCartonPreviewPosition(
+      carton,
+      boundedXZ,
+      pallet,
+      presets,
+      activeY,
+    );
     setPreviewPosition(candidate);
     const reason = getInvalidCartonPositionReason(carton, candidate, pallet, presets);
     setMoveValidationMessage(reason);
@@ -159,4 +171,13 @@ function CartonMeshItem({
       </group>
     </group>
   );
+}
+
+function currentPositionY(
+  carton: CartonInstance,
+  isDragging: boolean,
+  previewPosition: [number, number, number] | null,
+): number {
+  if (isDragging && previewPosition) return previewPosition[1];
+  return carton.palletPosition[1];
 }
