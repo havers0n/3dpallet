@@ -1,6 +1,7 @@
 import type { CartonInstance, Pallet, CartonPreset } from './types';
 
-const GAP = 2; // cm gap between cartons on pallet
+const GAP = 0; // cm gap between cartons on pallet
+export const GRID_STEP = 2; // cm grid step for move-mode snapping
 
 /**
  * Resolve the CartonPreset for a carton instance.
@@ -28,6 +29,65 @@ export function getCartonDimensions(
     );
   }
   return preset.dimensions;
+}
+
+export function getCartonFootprint(
+  carton: CartonInstance,
+  presets: CartonPreset[],
+): [number, number, number] {
+  const [w, h, d] = getCartonDimensions(carton, presets);
+  const rotation = carton.rotationDeg ?? 0;
+  if (rotation === 90) {
+    return [d, h, w];
+  }
+  return [w, h, d];
+}
+
+export function snapPositionToGrid(
+  position: [number, number, number],
+): [number, number, number] {
+  const [x, _y, z] = position;
+  const snappedX = Math.round(x / GRID_STEP) * GRID_STEP;
+  const snappedZ = Math.round(z / GRID_STEP) * GRID_STEP;
+  return [snappedX, 0, snappedZ];
+}
+
+export function isValidCartonPosition(
+  carton: CartonInstance,
+  position: [number, number, number],
+  pallet: Pallet,
+  presets: CartonPreset[],
+): boolean {
+  return getInvalidCartonPositionReason(carton, position, pallet, presets) === null;
+}
+
+export function getInvalidCartonPositionReason(
+  carton: CartonInstance,
+  position: [number, number, number],
+  pallet: Pallet,
+  presets: CartonPreset[],
+): string | null {
+  const dimensions = getCartonFootprint(carton, presets);
+
+  if (!cartonFitsOnPallet(position, dimensions, pallet)) {
+    return 'Cannot place carton: outside pallet bounds.';
+  }
+
+  for (const otherCarton of pallet.cartons) {
+    if (otherCarton.id === carton.id) continue;
+
+    const [cx, _cy, cz] = otherCarton.palletPosition;
+    const [cw, _ch, cd] = getCartonFootprint(otherCarton, presets);
+    const [x, _y, z] = position;
+
+    const overlapX = x < cx + cw + GAP && x + dimensions[0] + GAP > cx;
+    const overlapZ = z < cz + cd + GAP && z + dimensions[2] + GAP > cz;
+    if (overlapX && overlapZ) {
+      return `Cannot place carton: overlaps with "${otherCarton.label}".`;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -66,6 +126,29 @@ export function nextCartonSlotOnPallet(
   return [-1, 0, -1];
 }
 
+export function getNoSlotReasonForCartonDimensions(
+  pallet: Pallet,
+  cartonDimensions: [number, number, number],
+  presets: CartonPreset[],
+): string | null {
+  const [pw, _ph, pd] = pallet.dimensions;
+  const [cw, _ch, cd] = cartonDimensions;
+
+  if (cw > pw || cd > pd) {
+    return 'Cannot create carton: preset footprint is larger than pallet footprint.';
+  }
+
+  const slot = nextCartonSlotOnPallet(pallet, cartonDimensions, presets);
+  if (slot[0] >= 0) {
+    return null;
+  }
+
+  if (GAP > 0) {
+    return `Cannot create carton: no free slot on pallet with ${GAP} cm spacing rule.`;
+  }
+  return 'Cannot create carton: no free slot on pallet.';
+}
+
 /**
  * Check whether a slot at the given position overlaps with any existing carton.
  */
@@ -80,7 +163,7 @@ function slotIsFree(
 
   for (const carton of pallet.cartons) {
     const [cx, _cy, cz] = carton.palletPosition;
-    const [cw, _ch, cd] = getCartonDimensions(carton, presets);
+    const [cw, _ch, cd] = getCartonFootprint(carton, presets);
 
     // Overlap check (2D projection on pallet surface)
     const overlapX = px < cx + cw + GAP && px + pw + GAP > cx;
@@ -105,5 +188,5 @@ export function cartonFitsOnPallet(
   const [w, _h, d] = dimensions;
   const [pw, _ph, pd] = pallet.dimensions;
 
-  return x + w <= pw && z + d <= pd;
+  return x >= 0 && z >= 0 && x + w <= pw && z + d <= pd;
 }

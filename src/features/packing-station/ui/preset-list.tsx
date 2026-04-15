@@ -3,6 +3,7 @@ import { usePackingStore } from '../model/packing-store';
 export function PresetList() {
   const presets = usePackingStore((s) => s.session.availablePresets);
   const createCartonFromPreset = usePackingStore((s) => s.createCartonFromPreset);
+  const createCartonMessage = usePackingStore((s) => s.createCartonMessage);
 
   return (
     <div>
@@ -21,6 +22,11 @@ export function PresetList() {
           </button>
         ))}
       </div>
+      {createCartonMessage && (
+        <div className="mt-2 text-xs text-red-700 bg-red-50 rounded-md p-2 border border-red-200">
+          {createCartonMessage}
+        </div>
+      )}
     </div>
   );
 }

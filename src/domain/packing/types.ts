@@ -31,6 +31,8 @@ export interface CartonInstance {
   label: string;
   /** position on pallet in cm [x, y, z] */
   palletPosition: [number, number, number];
+  /** rotation on pallet around Y axis in degrees */
+  rotationDeg?: 0 | 90;
   items: PlacedItem[];
 }
 

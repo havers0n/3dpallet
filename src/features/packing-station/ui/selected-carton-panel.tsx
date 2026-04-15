@@ -5,7 +5,13 @@ export function SelectedCartonPanel() {
   const selectedCarton = usePackingStore(getSelectedCarton);
   const deleteCarton = usePackingStore((s) => s.deleteCarton);
   const packItem = usePackingStore((s) => s.packSelectedItemIntoSelectedCarton);
+  const unpackItem = usePackingStore((s) => s.unpackItemFromCarton);
   const selectedBufferItemId = usePackingStore((s) => s.selectedBufferItemId);
+  const cartonMoveModeCartonId = usePackingStore((s) => s.cartonMoveModeCartonId);
+  const moveValidationMessage = usePackingStore((s) => s.moveValidationMessage);
+  const enterCartonMoveMode = usePackingStore((s) => s.enterCartonMoveMode);
+  const cancelCartonMoveMode = usePackingStore((s) => s.cancelCartonMoveMode);
+  const rotateSelectedCarton90 = usePackingStore((s) => s.rotateSelectedCarton90);
 
   if (!selectedCarton) {
     return (
@@ -15,6 +21,8 @@ export function SelectedCartonPanel() {
       </div>
     );
   }
+
+  const isMoveModeActive = cartonMoveModeCartonId === selectedCarton.id;
 
   return (
     <div>
@@ -34,16 +42,33 @@ export function SelectedCartonPanel() {
             {selectedCarton.items.map((pi) => (
               <div key={pi.item.id} className="text-xs text-gray-500 flex justify-between items-center py-1">
                 <span>{pi.item.name}</span>
+                <button
+                  onClick={() => unpackItem(pi.item.id, selectedCarton.id)}
+                  className="ml-2 px-2 py-0.5 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 rounded border border-amber-300 transition-colors"
+                >
+                  Unpack
+                </button>
               </div>
             ))}
           </div>
         )}
 
-        <div className="mt-3 flex gap-2">
+        {isMoveModeActive && (
+          <div className="mt-3 text-xs text-yellow-700 bg-yellow-50 rounded-md p-2 border border-yellow-100">
+            Move mode active. Drag the carton on the pallet or click empty space to cancel.
+          </div>
+        )}
+        {moveValidationMessage && (
+          <div className="mt-2 text-xs text-red-700 bg-red-50 rounded-md p-2 border border-red-200">
+            {moveValidationMessage}
+          </div>
+        )}
+
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={() => packItem()}
             disabled={!selectedBufferItemId}
-            className="flex-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm rounded transition-colors"
+            className="flex-1 min-w-[140px] px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm rounded transition-colors"
           >
             Pack Selected Item
           </button>
@@ -53,6 +78,27 @@ export function SelectedCartonPanel() {
           >
             Delete
           </button>
+          <button
+            onClick={() => rotateSelectedCarton90()}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded transition-colors"
+          >
+            Rotate 90°
+          </button>
+          {!isMoveModeActive ? (
+            <button
+              onClick={() => enterCartonMoveMode(selectedCarton.id)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+            >
+              Move
+            </button>
+          ) : (
+            <button
+              onClick={() => cancelCartonMoveMode()}
+              className="px-3 py-1.5 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded transition-colors"
+            >
+              Cancel Move
+            </button>
+          )}
         </div>
       </div>
     </div>

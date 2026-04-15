@@ -1,6 +1,10 @@
 import type { CartonInstance } from '../../../domain/packing/types';
 import type { PackingState } from './packing-store';
-import { nextCartonSlotOnPallet } from '../../../domain/packing/carton-layout';
+import {
+  nextCartonSlotOnPallet,
+  isValidCartonPosition,
+  getInvalidCartonPositionReason,
+} from '../../../domain/packing/carton-layout';
 import { calculateItemPositionInCarton } from '../../../domain/packing/placement';
 import { itemExceedsWeightLimit } from '../../../domain/packing/guards';
 
@@ -110,21 +114,36 @@ export function createCartonFromPreset(
   if (!preset) return state;
 
   const dimensions = preset.dimensions;
+  const rotatedDimensions: [number, number, number] = [
+    dimensions[2],
+    dimensions[1],
+    dimensions[0],
+  ];
+
   const position = nextCartonSlotOnPallet(
     state.session.pallet,
     dimensions,
     state.session.availablePresets,
   );
+  const rotatedPosition = nextCartonSlotOnPallet(
+    state.session.pallet,
+    rotatedDimensions,
+    state.session.availablePresets,
+  );
+
+  const useRotatedPlacement = position[0] < 0 && rotatedPosition[0] >= 0;
+  const finalPosition = useRotatedPlacement ? rotatedPosition : position;
 
   // If no slot available, reject
-  if (position[0] < 0) return state;
+  if (finalPosition[0] < 0) return state;
 
   const cartonId = `carton-${Date.now()}`;
   const newCarton: CartonInstance = {
     id: cartonId,
     presetId,
     label: `${preset.name} #${state.session.pallet.cartons.length + 1}`,
-    palletPosition: position,
+    palletPosition: finalPosition,
+    rotationDeg: useRotatedPlacement ? 90 : 0,
     items: [],
   };
 
@@ -138,6 +157,87 @@ export function createCartonFromPreset(
       },
     },
     selectedCartonId: cartonId,
+  };
+}
+
+export function rotateCarton90(state: PackingState, cartonId: string): PackingState {
+  const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
+  if (!carton) return state;
+
+  const nextRotation: 0 | 90 = (carton.rotationDeg ?? 0) === 90 ? 0 : 90;
+  const rotatedCarton: CartonInstance = {
+    ...carton,
+    rotationDeg: nextRotation,
+  };
+
+  if (
+    getInvalidCartonPositionReason(
+      rotatedCarton,
+      rotatedCarton.palletPosition,
+      state.session.pallet,
+      state.session.availablePresets,
+    )
+  ) {
+    return state;
+  }
+
+  const newCartons = state.session.pallet.cartons.map((c) => {
+    if (c.id !== cartonId) return c;
+    return rotatedCarton;
+  });
+
+  return {
+    ...state,
+    session: {
+      ...state.session,
+      pallet: {
+        ...state.session.pallet,
+        cartons: newCartons,
+      },
+    },
+  };
+}
+
+/**
+ * Commit a moved carton position if the target is valid.
+ * Returns unchanged state when the move is invalid.
+ */
+export function commitCartonPosition(
+  state: PackingState,
+  cartonId: string,
+  position: [number, number, number],
+): PackingState {
+  // Reposition is bounded to the explicitly selected carton in active move mode.
+  if (state.selectedCartonId !== cartonId) return state;
+  if (state.cartonMoveModeCartonId !== cartonId) return state;
+
+  const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
+  if (!carton) return state;
+
+  if (
+    !isValidCartonPosition(carton, position, state.session.pallet, state.session.availablePresets)
+  ) {
+    return state;
+  }
+
+  const newCartons = state.session.pallet.cartons.map((c) => {
+    if (c.id !== cartonId) return c;
+    return {
+      ...c,
+      palletPosition: position,
+    };
+  });
+
+  return {
+    ...state,
+    session: {
+      ...state.session,
+      pallet: {
+        ...state.session.pallet,
+        cartons: newCartons,
+      },
+    },
+    cartonMoveModeCartonId: null,
   };
 }
 

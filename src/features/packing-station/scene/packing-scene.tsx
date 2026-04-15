@@ -8,6 +8,7 @@ import { CartonMesh } from './carton-mesh';
 
 function SceneFraming() {
   const pallet = usePackingStore((s) => s.session.pallet);
+  const moveModeCartonId = usePackingStore((s) => s.cartonMoveModeCartonId);
   const [pw, ph, pd] = pallet.dimensions;
 
   // Pallet center — slightly elevated for better readability
@@ -25,6 +26,7 @@ function SceneFraming() {
     <>
       <OrbitControls
         makeDefault
+        enabled={!moveModeCartonId}
         target={target}
         enableDamping
         dampingFactor={0.08}
@@ -32,17 +34,25 @@ function SceneFraming() {
         maxDistance={camOffset * 3}
         maxPolarAngle={Math.PI / 2.05}
       />
-      <CameraSetter position={cameraPosition} />
+      <CameraSetter x={cameraPosition[0]} y={cameraPosition[1]} z={cameraPosition[2]} />
     </>
   );
 }
 
-function CameraSetter({ position }: { position: [number, number, number] }) {
+function CameraSetter({
+  x,
+  y,
+  z,
+}: {
+  x: number;
+  y: number;
+  z: number;
+}) {
   const { camera } = useThree();
   useEffect(() => {
-    camera.position.set(...position);
+    camera.position.set(x, y, z);
     camera.updateProjectionMatrix();
-  }, [camera, position]);
+  }, [camera, x, y, z]);
   return null;
 }
 
@@ -52,7 +62,14 @@ export function PackingScene() {
       <Canvas
         camera={{ position: [0, 0, 0], fov: 50 }}
         className="w-full h-full"
-        onPointerMissed={() => usePackingStore.getState().selectCarton(null)}
+        onPointerMissed={() => {
+          const state = usePackingStore.getState();
+          if (state.cartonMoveModeCartonId) {
+            state.cancelCartonMoveMode();
+          } else {
+            state.selectCarton(null);
+          }
+        }}
       >
         <SceneLights />
         <SceneFraming />
