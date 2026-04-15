@@ -1,48 +1,32 @@
-This pass is not accepted.
+Task
+Implement a micro-fix for PR2 scene framing.
 
-You did not implement the requested correction pass. You mostly repeated the previous preset-dimensions fix.
+Object
+Fix scene framing so the camera and OrbitControls are centered on the pallet, not on world origin.
 
-The following defects still remain and must be fixed now:
+Required changes
+- set OrbitControls target to the pallet center
+- ensure the default camera framing clearly shows the full pallet on first load
+- keep current interaction model unchanged
+- do not expand scope beyond scene framing
 
-1) Selection flow is still broken
-- selectCarton() still clears selectedBufferItemId
-- selectBufferItem() still clears selectedCartonId
-- packSelectedItemIntoSelectedCarton() still requires both
-Fix this so carton and buffer item can stay selected at the same time.
-After successful pack, clear only selectedBufferItemId and keep selectedCartonId.
+Preferred implementation
+Use pallet dimensions from store and center controls around:
+[palletWidth / 2, palletHeight / 2, palletDepth / 2]
+or a slightly higher Y target if that gives better readability.
 
-2) Item placement logic is still incomplete
-- calculateItemPositionInCarton() still uses itemIndex
-- y is still always 0
-- existingItems is still unused
-Implement deterministic slot scanning using actual occupied positions:
-X first, then Z, then Y.
-First free valid slot wins.
-No collisions after delete + re-add.
+Checks
+- first load shows the pallet centered in view
+- orbit rotates around pallet center, not world origin
+- carton selection still works
+- no regression in current PR2 behavior
 
-3) Weight constraints are still not enforced
-- packItemIntoCarton() still does not check preset.maxWeight
-Add actual weight validation before packing.
+Files expected to change
+- src/features/packing-station/scene/packing-scene.tsx
+- optionally a tiny scene helper if strictly necessary
 
-4) Pallet height semantics are still not clarified
-Either:
-- document explicitly that pallet height is pallet thickness only and footprint validation is X/Z only
-or
-- enforce height consistently
-For this prototype, prefer the first option and document it clearly.
-
-Only change these files unless strictly necessary:
-- src/features/packing-station/model/packing-store.ts
-- src/features/packing-station/model/packing-actions.ts
-- src/domain/packing/placement.ts
-- src/domain/packing/types.ts and/or comments if needed
-- src/domain/packing/guards.ts if needed
-
-Return the full updated contents of:
-- packing-store.ts
-- packing-actions.ts
-- placement.ts
-- types.ts if changed
-- guards.ts if changed
-
-Do not return a generic summary first. Return code first.
+Prohibitions
+- no PR3 work
+- no UI redesign
+- no drag-and-drop
+- no scene refactor
