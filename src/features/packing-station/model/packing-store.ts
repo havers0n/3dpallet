@@ -18,6 +18,7 @@ export interface PackingState {
   session: PackingSession;
   selectedCartonId: string | null;
   selectedBufferItemId: string | null;
+  selectedPackedItemId: string | null;
   cartonMoveModeCartonId: string | null;
   moveValidationMessage: string | null;
   createCartonMessage: string | null;
@@ -27,6 +28,7 @@ export interface PackingState {
   resetSession: () => void;
   selectCarton: (cartonId: string | null) => void;
   selectBufferItem: (itemId: string | null) => void;
+  selectPackedItem: (itemId: string | null) => void;
   packSelectedItemIntoSelectedCarton: () => void;
   unpackItemFromCarton: (itemId: string, cartonId: string) => void;
   createCartonFromPreset: (presetId: string) => void;
@@ -42,6 +44,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
   session: createDemoSession(),
   selectedCartonId: null,
   selectedBufferItemId: null,
+  selectedPackedItemId: null,
   cartonMoveModeCartonId: null,
   moveValidationMessage: null,
   createCartonMessage: null,
@@ -51,6 +54,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       session: createDemoSession(),
       selectedCartonId: null,
       selectedBufferItemId: null,
+      selectedPackedItemId: null,
       cartonMoveModeCartonId: null,
       moveValidationMessage: null,
       createCartonMessage: null,
@@ -62,6 +66,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       session: createDemoSession(),
       selectedCartonId: null,
       selectedBufferItemId: null,
+      selectedPackedItemId: null,
       cartonMoveModeCartonId: null,
       moveValidationMessage: null,
       createCartonMessage: null,
@@ -73,6 +78,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
 
     set({
       selectedCartonId: cartonId,
+      selectedPackedItemId: null,
       cartonMoveModeCartonId:
         cartonId === null
           ? null
@@ -86,7 +92,11 @@ export const usePackingStore = create<PackingState>((set, get) => ({
 
   selectBufferItem: (itemId: string | null) => {
     // Buffer item selection is independent — do not clear carton selection
-    set({ selectedBufferItemId: itemId, createCartonMessage: null });
+    set({ selectedBufferItemId: itemId, selectedPackedItemId: null, createCartonMessage: null });
+  },
+
+  selectPackedItem: (itemId: string | null) => {
+    set({ selectedPackedItemId: itemId, selectedBufferItemId: null, createCartonMessage: null });
   },
 
   packSelectedItemIntoSelectedCarton: () => {
@@ -100,13 +110,17 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     set({
       session: newState.session,
       selectedBufferItemId: null, // clear only item selection, keep carton selected
+      selectedPackedItemId: state.selectedBufferItemId,
     });
   },
 
   unpackItemFromCarton: (itemId: string, cartonId: string) => {
     const state = get();
     const newState = unpackItemFromCarton(state, itemId, cartonId);
-    set(newState);
+    set({
+      ...newState,
+      selectedPackedItemId: state.selectedPackedItemId === itemId ? null : state.selectedPackedItemId,
+    });
   },
 
   createCartonFromPreset: (presetId: string) => {
@@ -128,11 +142,16 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       cartonMoveModeCartonId: null,
       moveValidationMessage: null,
       createCartonMessage: null,
+      selectedPackedItemId: null,
     });
   },
 
   deleteCarton: (cartonId: string) => {
     const state = get();
+    const deletedCarton = state.session.pallet.cartons.find((carton) => carton.id === cartonId);
+    const selectedItemWasDeleted = deletedCarton?.items.some(
+      (placedItem) => placedItem.item.id === state.selectedPackedItemId,
+    );
     const newState = deleteCarton(state, cartonId);
     set({
       ...newState,
@@ -140,6 +159,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
         newState.selectedCartonId === state.cartonMoveModeCartonId ? newState.selectedCartonId : null,
       moveValidationMessage: null,
       createCartonMessage: null,
+      selectedPackedItemId: selectedItemWasDeleted ? null : state.selectedPackedItemId,
     });
   },
 

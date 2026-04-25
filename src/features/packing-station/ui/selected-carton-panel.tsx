@@ -7,6 +7,8 @@ export function SelectedCartonPanel() {
   const packItem = usePackingStore((s) => s.packSelectedItemIntoSelectedCarton);
   const unpackItem = usePackingStore((s) => s.unpackItemFromCarton);
   const selectedBufferItemId = usePackingStore((s) => s.selectedBufferItemId);
+  const selectedPackedItemId = usePackingStore((s) => s.selectedPackedItemId);
+  const selectPackedItem = usePackingStore((s) => s.selectPackedItem);
   const cartonMoveModeCartonId = usePackingStore((s) => s.cartonMoveModeCartonId);
   const moveValidationMessage = usePackingStore((s) => s.moveValidationMessage);
   const enterCartonMoveMode = usePackingStore((s) => s.enterCartonMoveMode);
@@ -40,11 +42,23 @@ export function SelectedCartonPanel() {
           <div className="mt-2 pt-2 border-t border-gray-200">
             <div className="text-xs font-medium text-gray-600 mb-1">Contents:</div>
             {selectedCarton.items.map((pi) => (
-              <div key={pi.item.id} className="text-xs text-gray-500 flex justify-between items-center py-1">
-                <span>{pi.item.name}</span>
+              <div
+                key={pi.item.id}
+                className={`flex items-center justify-between gap-2 rounded px-2 py-1 text-xs transition-colors ${
+                  selectedPackedItemId === pi.item.id
+                    ? 'bg-yellow-100 text-yellow-900'
+                    : 'text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                <button
+                  onClick={() => selectPackedItem(selectedPackedItemId === pi.item.id ? null : pi.item.id)}
+                  className="min-w-0 flex-1 truncate text-left"
+                >
+                  {pi.item.name}
+                </button>
                 <button
                   onClick={() => unpackItem(pi.item.id, selectedCarton.id)}
-                  className="ml-2 px-2 py-0.5 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 rounded border border-amber-300 transition-colors"
+                  className="shrink-0 rounded border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 transition-colors hover:bg-amber-200"
                 >
                   Unpack
                 </button>
