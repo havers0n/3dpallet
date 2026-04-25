@@ -89,7 +89,7 @@ export function getInvalidCartonPositionReason(
   const [, h] = dimensions;
 
   if (!cartonFitsOnPallet(position, dimensions, pallet)) {
-    return 'Cannot place carton: outside pallet bounds.';
+    return 'Нельзя поставить коробку: за пределами паллеты.';
   }
 
   for (const otherCarton of pallet.cartons) {
@@ -102,12 +102,12 @@ export function getInvalidCartonPositionReason(
     const overlapY = y < cy + ch && y + h > cy;
     const overlapZ = z < cz + cd + GAP && z + dimensions[2] + GAP > cz;
     if (overlapX && overlapY && overlapZ) {
-      return `Cannot place carton: overlaps with "${otherCarton.label}".`;
+      return `Нельзя поставить коробку: пересекается с "${otherCarton.label}".`;
     }
   }
 
   if (!hasSupportAtHeight(carton, position, pallet, presets)) {
-    return 'Cannot place carton: no support under base.';
+    return 'Нельзя поставить коробку: нет опоры под основанием.';
   }
 
   return null;
@@ -164,7 +164,7 @@ export function getNoSlotReasonForCartonDimensions(
   const [cw, _ch, cd] = cartonDimensions;
 
   if (cw > pw || cd > pd) {
-    return 'Cannot create carton: preset footprint is larger than pallet footprint.';
+    return 'Нельзя создать коробку: пресет больше основания паллеты.';
   }
 
   const slot = nextCartonSlotOnPallet(pallet, cartonDimensions, presets);
@@ -173,9 +173,9 @@ export function getNoSlotReasonForCartonDimensions(
   }
 
   if (GAP > 0) {
-    return `Cannot create carton: no free slot on pallet with ${GAP} cm spacing rule.`;
+    return `Нельзя создать коробку: нет свободного места с зазором ${GAP} см.`;
   }
-  return 'Cannot create carton: no free slot on pallet.';
+  return 'Нельзя создать коробку: на паллете нет свободного места.';
 }
 
 /**

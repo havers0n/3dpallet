@@ -86,20 +86,20 @@ function CameraHud({
   return (
     <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2 rounded-md border border-white/10 bg-slate-950/70 p-2 shadow-lg backdrop-blur">
       <CameraButton active={cameraMode === 'iso'} onClick={() => onCameraModeChange('iso')}>
-        Iso
+        Изо
       </CameraButton>
       <CameraButton active={cameraMode === 'top'} onClick={() => onCameraModeChange('top')}>
-        Top
+        Сверху
       </CameraButton>
       <CameraButton active={cameraMode === 'front'} onClick={() => onCameraModeChange('front')}>
-        Front
+        Спереди
       </CameraButton>
       <button
         type="button"
         onClick={onResetView}
         className="rounded border border-slate-500 px-2.5 py-1 text-xs font-medium text-slate-100 transition-colors hover:border-white hover:bg-white/10"
       >
-        Reset view
+        Сброс вида
       </button>
     </div>
   );
@@ -132,6 +132,9 @@ function CameraButton({
 export function PackingScene() {
   const [cameraMode, setCameraMode] = useState<CameraMode>('iso');
   const [resetToken, setResetToken] = useState(0);
+  const cartonCount = usePackingStore((s) => s.session.pallet.cartons.length);
+  const firstPresetId = usePackingStore((s) => s.session.availablePresets[0]?.id);
+  const createCartonFromPreset = usePackingStore((s) => s.createCartonFromPreset);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg bg-gray-900">
@@ -140,6 +143,23 @@ export function PackingScene() {
         onCameraModeChange={setCameraMode}
         onResetView={() => setResetToken((token) => token + 1)}
       />
+      {cartonCount === 0 && (
+        <div className="pointer-events-none absolute inset-x-4 top-20 z-10 flex justify-center">
+          <div className="pointer-events-auto rounded-lg border border-slate-200 bg-white/95 px-4 py-3 text-center text-sm text-slate-700 shadow-lg backdrop-blur">
+            <div className="font-semibold text-slate-900">Паллет пока пуст</div>
+            <div className="mt-1">Добавьте коробку из пресета, чтобы начать упаковку.</div>
+            {firstPresetId && (
+              <button
+                type="button"
+                onClick={() => createCartonFromPreset(firstPresetId)}
+                className="mt-3 rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+              >
+                Добавить первую коробку
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <Canvas
         camera={{ position: [0, 0, 0], fov: 50 }}
         className="h-full w-full"

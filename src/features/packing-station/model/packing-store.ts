@@ -14,6 +14,16 @@ import {
   getNoSlotReasonForCartonDimensions,
 } from '../../../domain/packing/carton-layout';
 
+const STORAGE_KEY = '3dpallet:packing-session:v1';
+
+type UndoSnapshot = {
+  label: string;
+  session: PackingSession;
+  selectedCartonId: string | null;
+  selectedBufferItemId: string | null;
+  selectedPackedItemId: string | null;
+};
+
 export interface PackingState {
   session: PackingSession;
   selectedCartonId: string | null;
@@ -22,10 +32,12 @@ export interface PackingState {
   cartonMoveModeCartonId: string | null;
   moveValidationMessage: string | null;
   createCartonMessage: string | null;
+  undoSnapshot: UndoSnapshot | null;
 
   // Actions
   hydrateDemoSession: () => void;
   resetSession: () => void;
+  undoLastAction: () => void;
   selectCarton: (cartonId: string | null) => void;
   selectBufferItem: (itemId: string | null) => void;
   selectPackedItem: (itemId: string | null) => void;
@@ -48,20 +60,24 @@ export const usePackingStore = create<PackingState>((set, get) => ({
   cartonMoveModeCartonId: null,
   moveValidationMessage: null,
   createCartonMessage: null,
+  undoSnapshot: null,
 
   hydrateDemoSession: () => {
+    const storedSession = loadStoredSession();
     set({
-      session: createDemoSession(),
+      session: storedSession ?? createDemoSession(),
       selectedCartonId: null,
       selectedBufferItemId: null,
       selectedPackedItemId: null,
       cartonMoveModeCartonId: null,
       moveValidationMessage: null,
       createCartonMessage: null,
+      undoSnapshot: null,
     });
   },
 
   resetSession: () => {
+    const state = get();
     set({
       session: createDemoSession(),
       selectedCartonId: null,
@@ -70,6 +86,23 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       cartonMoveModeCartonId: null,
       moveValidationMessage: null,
       createCartonMessage: null,
+      undoSnapshot: createUndoSnapshot(state, 'Сброс сессии'),
+    });
+  },
+
+  undoLastAction: () => {
+    const state = get();
+    if (!state.undoSnapshot) return;
+
+    set({
+      session: state.undoSnapshot.session,
+      selectedCartonId: state.undoSnapshot.selectedCartonId,
+      selectedBufferItemId: state.undoSnapshot.selectedBufferItemId,
+      selectedPackedItemId: state.undoSnapshot.selectedPackedItemId,
+      cartonMoveModeCartonId: null,
+      moveValidationMessage: null,
+      createCartonMessage: null,
+      undoSnapshot: null,
     });
   },
 
@@ -111,6 +144,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       session: newState.session,
       selectedBufferItemId: null, // clear only item selection, keep carton selected
       selectedPackedItemId: state.selectedBufferItemId,
+      undoSnapshot: createUndoSnapshot(state, 'Упаковка товара'),
     });
   },
 
@@ -120,6 +154,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     set({
       ...newState,
       selectedPackedItemId: state.selectedPackedItemId === itemId ? null : state.selectedPackedItemId,
+      undoSnapshot: createUndoSnapshot(state, 'Возврат товара'),
     });
   },
 
@@ -134,7 +169,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
         preset.dimensions,
         state.session.availablePresets,
       );
-      set({ createCartonMessage: reason ?? 'Cannot create carton at this time.' });
+      set({ createCartonMessage: reason ?? 'Нельзя создать коробку сейчас.' });
       return;
     }
     set({
@@ -143,6 +178,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       moveValidationMessage: null,
       createCartonMessage: null,
       selectedPackedItemId: null,
+      undoSnapshot: createUndoSnapshot(state, 'Создание коробки'),
     });
   },
 
@@ -160,6 +196,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       moveValidationMessage: null,
       createCartonMessage: null,
       selectedPackedItemId: selectedItemWasDeleted ? null : state.selectedPackedItemId,
+      undoSnapshot: createUndoSnapshot(state, 'Удаление коробки'),
     });
   },
 
@@ -189,7 +226,7 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     }
     const newState = commitCartonPosition(state, cartonId, position);
     if (newState === state) return;
-    set({ ...newState, moveValidationMessage: null });
+    set({ ...newState, moveValidationMessage: null, undoSnapshot: createUndoSnapshot(state, 'Перемещение коробки') });
   },
 
   rotateSelectedCarton90: () => {
@@ -197,13 +234,53 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     if (!state.selectedCartonId) return;
     const newState = rotateCarton90(state, state.selectedCartonId);
     if (newState === state) {
-      set({ moveValidationMessage: 'Cannot rotate carton: not enough free space at current position.' });
+      set({ moveValidationMessage: 'Нельзя повернуть коробку: в текущей позиции недостаточно места.' });
       return;
     }
-    set({ ...newState, moveValidationMessage: null });
+    set({ ...newState, moveValidationMessage: null, undoSnapshot: createUndoSnapshot(state, 'Поворот коробки') });
   },
 
   setMoveValidationMessage: (message: string | null) => {
     set({ moveValidationMessage: message });
   },
 }));
+
+usePackingStore.subscribe((state) => {
+  saveStoredSession(state.session);
+});
+
+function createUndoSnapshot(state: PackingState, label: string): UndoSnapshot {
+  return {
+    label,
+    session: state.session,
+    selectedCartonId: state.selectedCartonId,
+    selectedBufferItemId: state.selectedBufferItemId,
+    selectedPackedItemId: state.selectedPackedItemId,
+  };
+}
+
+function loadStoredSession(): PackingSession | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PackingSession;
+    if (!parsed?.pallet || !Array.isArray(parsed.bufferItems) || !Array.isArray(parsed.availablePresets)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredSession(session: PackingSession): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // Persistence is useful, but the packing flow should keep working without it.
+  }
+}

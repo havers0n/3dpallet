@@ -318,11 +318,11 @@ function CartonBadge({
       <div className="min-w-44 rounded-md border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700 shadow-lg backdrop-blur">
         <div className="mb-1 truncate font-semibold text-slate-900">{label}</div>
         <div className="flex justify-between gap-3">
-          <span>{itemCount} items</span>
-          <span>{weight.toFixed(1)} / {maxWeight.toFixed(0)} kg</span>
+          <span>Товаров: {itemCount}</span>
+          <span>{weight.toFixed(1)} / {maxWeight.toFixed(0)} кг</span>
         </div>
-        <MetricBar label="Weight" ratio={weightRatio} color="#2563eb" />
-        <MetricBar label="Volume" ratio={volumeRatio} color="#16a34a" />
+        <MetricBar label="Вес" ratio={weightRatio} color="#2563eb" />
+        <MetricBar label="Объём" ratio={volumeRatio} color="#16a34a" />
       </div>
     </Html>
   );
