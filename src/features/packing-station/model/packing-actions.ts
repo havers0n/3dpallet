@@ -5,43 +5,46 @@ import {
   isValidCartonPosition,
   getInvalidCartonPositionReason,
 } from '../../../domain/packing/carton-layout';
-import { calculateItemPositionInCarton } from '../../../domain/packing/placement';
+import { calculateItemPlacementInCarton } from '../../../domain/packing/placement';
 import { itemExceedsWeightLimit } from '../../../domain/packing/guards';
+import { createCartonId } from './carton-id';
 
-/**
- * Pack a buffer item into the selected carton.
- * Validates:
- *   - item is in buffer
- *   - item fits in carton by dimensions (slot scanning)
- *   - item does not exceed preset max weight
- */
+export type PackingActionResult = {
+  ok: boolean;
+  state: PackingState;
+  reason: string | null;
+};
+
+function ok(state: PackingState): PackingActionResult {
+  return { ok: true, state, reason: null };
+}
+
+function rejected(state: PackingState, reason: string): PackingActionResult {
+  return { ok: false, state, reason };
+}
+
 export function packItemIntoCarton(
   state: PackingState,
   itemId: string,
   cartonId: string,
-): PackingState {
+): PackingActionResult {
   const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
-  if (!carton) return state;
+  if (!carton) return rejected(state, 'Коробка не найдена');
 
   const itemIndex = state.session.bufferItems.findIndex((i) => i.id === itemId);
-  if (itemIndex === -1) return state;
+  if (itemIndex === -1) return rejected(state, 'Товар не найден в буфере');
 
   const item = state.session.bufferItems[itemIndex];
   const presets = state.session.availablePresets;
 
-  // Weight check against preset maxWeight
-  if (itemExceedsWeightLimit(carton, presets, item.weight)) return state;
+  if (itemExceedsWeightLimit(carton, presets, item.weight)) {
+    return rejected(state, 'Превышен лимит веса коробки');
+  }
 
-  // Calculate grid position for the new item via deterministic slot scanning
-  const position = calculateItemPositionInCarton(
-    item,
-    carton,
-    presets,
-    carton.items,
-  );
-
-  // If item doesn't fit in any slot, reject
-  if (position[0] < 0) return state;
+  const placement = calculateItemPlacementInCarton(item, carton, presets, carton.items);
+  if (!placement) {
+    return rejected(state, 'Товар не помещается в выбранную коробку');
+  }
 
   const newBufferItems = [...state.session.bufferItems];
   newBufferItems.splice(itemIndex, 1);
@@ -50,11 +53,18 @@ export function packItemIntoCarton(
     if (c.id !== cartonId) return c;
     return {
       ...c,
-      items: [...c.items, { item, position }],
+      items: [
+        ...c.items,
+        {
+          item,
+          position: placement.position,
+          dimensions: placement.dimensions,
+        },
+      ],
     };
   });
 
-  return {
+  return ok({
     ...state,
     session: {
       ...state.session,
@@ -64,22 +74,19 @@ export function packItemIntoCarton(
         cartons: newCartons,
       },
     },
-  };
+  });
 }
 
-/**
- * Unpack an item from a carton back to buffer.
- */
 export function unpackItemFromCarton(
   state: PackingState,
   itemId: string,
   cartonId: string,
-): PackingState {
+): PackingActionResult {
   const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
-  if (!carton) return state;
+  if (!carton) return rejected(state, 'Коробка не найдена');
 
   const placedItem = carton.items.find((pi) => pi.item.id === itemId);
-  if (!placedItem) return state;
+  if (!placedItem) return rejected(state, 'Товар не найден в коробке');
 
   const newCartons = state.session.pallet.cartons.map((c) => {
     if (c.id !== cartonId) return c;
@@ -89,7 +96,7 @@ export function unpackItemFromCarton(
     };
   });
 
-  return {
+  return ok({
     ...state,
     session: {
       ...state.session,
@@ -99,19 +106,15 @@ export function unpackItemFromCarton(
         cartons: newCartons,
       },
     },
-  };
+  });
 }
 
-/**
- * Create a new carton from a preset.
- * Uses deterministic slot allocation on the pallet.
- */
 export function createCartonFromPreset(
   state: PackingState,
   presetId: string,
-): PackingState {
+): PackingActionResult {
   const preset = state.session.availablePresets.find((p) => p.id === presetId);
-  if (!preset) return state;
+  if (!preset) return rejected(state, 'Пресет коробки не найден');
 
   const dimensions = preset.dimensions;
   const rotatedDimensions: [number, number, number] = [
@@ -134,10 +137,11 @@ export function createCartonFromPreset(
   const useRotatedPlacement = position[0] < 0 && rotatedPosition[0] >= 0;
   const finalPosition = useRotatedPlacement ? rotatedPosition : position;
 
-  // If no slot available, reject
-  if (finalPosition[0] < 0) return state;
+  if (finalPosition[0] < 0) {
+    return rejected(state, 'На паллете нет свободного места');
+  }
 
-  const cartonId = `carton-${Date.now()}`;
+  const cartonId = createCartonId(state.session.pallet);
   const newCarton: CartonInstance = {
     id: cartonId,
     presetId,
@@ -147,7 +151,7 @@ export function createCartonFromPreset(
     items: [],
   };
 
-  return {
+  return ok({
     ...state,
     session: {
       ...state.session,
@@ -157,12 +161,12 @@ export function createCartonFromPreset(
       },
     },
     selectedCartonId: cartonId,
-  };
+  });
 }
 
-export function rotateCarton90(state: PackingState, cartonId: string): PackingState {
+export function rotateCarton90(state: PackingState, cartonId: string): PackingActionResult {
   const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
-  if (!carton) return state;
+  if (!carton) return rejected(state, 'Коробка не найдена');
 
   const nextRotation: 0 | 90 = (carton.rotationDeg ?? 0) === 90 ? 0 : 90;
   const rotatedCarton: CartonInstance = {
@@ -170,15 +174,14 @@ export function rotateCarton90(state: PackingState, cartonId: string): PackingSt
     rotationDeg: nextRotation,
   };
 
-  if (
-    getInvalidCartonPositionReason(
-      rotatedCarton,
-      rotatedCarton.palletPosition,
-      state.session.pallet,
-      state.session.availablePresets,
-    )
-  ) {
-    return state;
+  const reason = getInvalidCartonPositionReason(
+    rotatedCarton,
+    rotatedCarton.palletPosition,
+    state.session.pallet,
+    state.session.availablePresets,
+  );
+  if (reason) {
+    return rejected(state, reason);
   }
 
   const newCartons = state.session.pallet.cartons.map((c) => {
@@ -186,7 +189,7 @@ export function rotateCarton90(state: PackingState, cartonId: string): PackingSt
     return rotatedCarton;
   });
 
-  return {
+  return ok({
     ...state,
     session: {
       ...state.session,
@@ -195,29 +198,36 @@ export function rotateCarton90(state: PackingState, cartonId: string): PackingSt
         cartons: newCartons,
       },
     },
-  };
+  });
 }
 
-/**
- * Commit a moved carton position if the target is valid.
- * Returns unchanged state when the move is invalid.
- */
 export function commitCartonPosition(
   state: PackingState,
   cartonId: string,
   position: [number, number, number],
-): PackingState {
-  // Reposition is bounded to the explicitly selected carton in active move mode.
-  if (state.selectedCartonId !== cartonId) return state;
-  if (state.cartonMoveModeCartonId !== cartonId) return state;
+): PackingActionResult {
+  if (state.selectedCartonId !== cartonId) {
+    return rejected(state, 'Коробка не выбрана');
+  }
+  if (state.cartonMoveModeCartonId !== cartonId) {
+    return rejected(state, 'Режим перемещения не активен');
+  }
 
   const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
-  if (!carton) return state;
+  if (!carton) return rejected(state, 'Коробка не найдена');
 
   if (
     !isValidCartonPosition(carton, position, state.session.pallet, state.session.availablePresets)
   ) {
-    return state;
+    return rejected(
+      state,
+      getInvalidCartonPositionReason(
+        carton,
+        position,
+        state.session.pallet,
+        state.session.availablePresets,
+      ) ?? 'Позиция коробки недоступна',
+    );
   }
 
   const newCartons = state.session.pallet.cartons.map((c) => {
@@ -228,7 +238,7 @@ export function commitCartonPosition(
     };
   });
 
-  return {
+  return ok({
     ...state,
     session: {
       ...state.session,
@@ -238,19 +248,16 @@ export function commitCartonPosition(
       },
     },
     cartonMoveModeCartonId: null,
-  };
+  });
 }
 
-/**
- * Delete a carton and return its items to buffer.
- */
-export function deleteCarton(state: PackingState, cartonId: string): PackingState {
+export function deleteCarton(state: PackingState, cartonId: string): PackingActionResult {
   const carton = state.session.pallet.cartons.find((c) => c.id === cartonId);
-  if (!carton) return state;
+  if (!carton) return rejected(state, 'Коробка не найдена');
 
   const bufferItemsFromCarton = carton.items.map((pi) => pi.item);
 
-  return {
+  return ok({
     ...state,
     session: {
       ...state.session,
@@ -261,5 +268,5 @@ export function deleteCarton(state: PackingState, cartonId: string): PackingStat
       },
     },
     selectedCartonId: state.selectedCartonId === cartonId ? null : state.selectedCartonId,
-  };
+  });
 }

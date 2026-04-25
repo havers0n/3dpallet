@@ -127,25 +127,22 @@ export function nextCartonSlotOnPallet(
   const [pw, _ph, pd] = pallet.dimensions;
   const [cw, _ch, cd] = cartonDimensions;
 
+  if (cw > pw || cd > pd) {
+    return [-1, 0, -1];
+  }
+
   if (pallet.cartons.length === 0) {
     return [0, 0, 0];
   }
 
   const levels = collectBaseHeightsFromStack(pallet, presets);
 
-  // Scan row by row (z), then column by column (x)
-  // Use the carton's own footprint for grid pitch
-  const rowPitch = cd + GAP;
-  const colPitch = cw + GAP;
-
   for (const y of levels) {
-    for (let z = 0; z <= pd - cd; z += rowPitch) {
-      for (let x = 0; x <= pw - cw; x += colPitch) {
-        const candidate: [number, number, number] = [x, y, z];
-        if (slotIsFree(candidate, cartonDimensions, pallet, presets)) {
-          if (hasSupportForDimensions(candidate, cartonDimensions, pallet, presets)) {
-            return candidate;
-          }
+    for (const [x, z] of collectPalletSlotOrigins(pallet, presets, y, [pw, pd])) {
+      const candidate: [number, number, number] = [x, y, z];
+      if (slotIsFree(candidate, cartonDimensions, pallet, presets)) {
+        if (hasSupportForDimensions(candidate, cartonDimensions, pallet, presets)) {
+          return candidate;
         }
       }
     }
@@ -217,6 +214,41 @@ function collectBaseHeightsFromStack(
     levels.add(carton.palletPosition[1] + h);
   }
   return Array.from(levels).sort((a, b) => a - b);
+}
+
+function collectPalletSlotOrigins(
+  pallet: Pallet,
+  presets: CartonPreset[],
+  y: number,
+  palletFootprint: [number, number],
+): [number, number][] {
+  const [pw, pd] = palletFootprint;
+  const xs = new Set<number>([0]);
+  const zs = new Set<number>([0]);
+
+  for (const carton of pallet.cartons) {
+    const [cx, cy, cz] = carton.palletPosition;
+    const [cw, ch, cd] = getCartonFootprint(carton, presets);
+    if (cy !== y && cy + ch !== y) continue;
+    xs.add(cx + cw + GAP);
+    zs.add(cz + cd + GAP);
+  }
+
+  const origins: [number, number][] = [];
+  const sortedZ = Array.from(zs)
+    .filter((z) => z >= 0 && z < pd)
+    .sort((a, b) => a - b);
+  const sortedX = Array.from(xs)
+    .filter((x) => x >= 0 && x < pw)
+    .sort((a, b) => a - b);
+
+  for (const z of sortedZ) {
+    for (const x of sortedX) {
+      origins.push([x, z]);
+    }
+  }
+
+  return origins;
 }
 
 export function resolveCartonPreviewPosition(

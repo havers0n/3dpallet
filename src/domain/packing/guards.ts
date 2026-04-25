@@ -1,5 +1,6 @@
 import type { Item, CartonInstance, Pallet, CartonPreset } from './types';
 import { resolveCartonPreset } from './carton-layout';
+import { getPlacedItemDimensions } from './placement';
 
 /**
  * Pallet placement semantics:
@@ -80,7 +81,7 @@ export function areItemsValidInCarton(
   const [cw, ch, cd] = preset.dimensions;
 
   return carton.items.every((pi) => {
-    const [iw, ih, id] = pi.item.dimensions;
+    const [iw, ih, id] = getPlacedItemDimensions(pi);
     return iw <= cw && ih <= ch && id <= cd;
   });
 }

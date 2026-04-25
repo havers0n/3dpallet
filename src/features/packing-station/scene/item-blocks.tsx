@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { useMemo, useState } from 'react';
 import type { CartonInstance, CartonPreset, PlacedItem } from '../../../domain/packing/types';
 import { getCartonDimensions } from '../../../domain/packing/carton-layout';
+import { getPlacedItemDimensions } from '../../../domain/packing/placement';
 import { usePackingStore } from '../model/packing-store';
 
 const SKU_COLORS = ['#14b8a6', '#f97316', '#8b5cf6', '#22c55e', '#eab308', '#0ea5e9'];
@@ -55,7 +56,7 @@ function ItemBlock({
   onHover: (itemId: string | null) => void;
 }) {
   const { item, position } = placedItem;
-  const [w, h, d] = item.dimensions;
+  const [w, h, d] = getPlacedItemDimensions(placedItem);
   const color = useMemo(() => colorForSku(item.sku, index), [index, item.sku]);
   const edgeColor = isSelected ? '#fef08a' : isHovered ? '#ffffff' : '#083344';
 

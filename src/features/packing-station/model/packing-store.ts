@@ -34,7 +34,6 @@ export interface PackingState {
   createCartonMessage: string | null;
   undoSnapshot: UndoSnapshot | null;
 
-  // Actions
   hydrateDemoSession: () => void;
   resetSession: () => void;
   undoLastAction: () => void;
@@ -116,15 +115,14 @@ export const usePackingStore = create<PackingState>((set, get) => ({
         cartonId === null
           ? null
           : state.cartonMoveModeCartonId === cartonId
-          ? state.cartonMoveModeCartonId
-          : null,
+            ? state.cartonMoveModeCartonId
+            : null,
       moveValidationMessage: null,
       createCartonMessage: null,
     });
   },
 
   selectBufferItem: (itemId: string | null) => {
-    // Buffer item selection is independent — do not clear carton selection
     set({ selectedBufferItemId: itemId, selectedPackedItemId: null, createCartonMessage: null });
   },
 
@@ -136,23 +134,27 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     const state = get();
     if (!state.selectedCartonId || !state.selectedBufferItemId) return;
 
-    const newState = packItemIntoCarton(state, state.selectedBufferItemId, state.selectedCartonId);
-
-    if (newState === state) return; // pack was rejected, no state change
+    const result = packItemIntoCarton(state, state.selectedBufferItemId, state.selectedCartonId);
+    if (!result.ok) {
+      set({ createCartonMessage: result.reason });
+      return;
+    }
 
     set({
-      session: newState.session,
-      selectedBufferItemId: null, // clear only item selection, keep carton selected
+      session: result.state.session,
+      selectedBufferItemId: null,
       selectedPackedItemId: state.selectedBufferItemId,
+      createCartonMessage: null,
       undoSnapshot: createUndoSnapshot(state, 'Упаковка товара'),
     });
   },
 
   unpackItemFromCarton: (itemId: string, cartonId: string) => {
     const state = get();
-    const newState = unpackItemFromCarton(state, itemId, cartonId);
+    const result = unpackItemFromCarton(state, itemId, cartonId);
+    if (!result.ok) return;
     set({
-      ...newState,
+      ...result.state,
       selectedPackedItemId: state.selectedPackedItemId === itemId ? null : state.selectedPackedItemId,
       undoSnapshot: createUndoSnapshot(state, 'Возврат товара'),
     });
@@ -162,18 +164,18 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     const state = get();
     const preset = state.session.availablePresets.find((p) => p.id === presetId);
     if (!preset) return;
-    const newState = createCartonFromPreset(state, presetId);
-    if (newState === state) {
+    const result = createCartonFromPreset(state, presetId);
+    if (!result.ok) {
       const reason = getNoSlotReasonForCartonDimensions(
         state.session.pallet,
         preset.dimensions,
         state.session.availablePresets,
       );
-      set({ createCartonMessage: reason ?? 'Нельзя создать коробку сейчас.' });
+      set({ createCartonMessage: reason ?? result.reason });
       return;
     }
     set({
-      ...newState,
+      ...result.state,
       cartonMoveModeCartonId: null,
       moveValidationMessage: null,
       createCartonMessage: null,
@@ -188,11 +190,14 @@ export const usePackingStore = create<PackingState>((set, get) => ({
     const selectedItemWasDeleted = deletedCarton?.items.some(
       (placedItem) => placedItem.item.id === state.selectedPackedItemId,
     );
-    const newState = deleteCarton(state, cartonId);
+    const result = deleteCarton(state, cartonId);
+    if (!result.ok) return;
     set({
-      ...newState,
+      ...result.state,
       cartonMoveModeCartonId:
-        newState.selectedCartonId === state.cartonMoveModeCartonId ? newState.selectedCartonId : null,
+        result.state.selectedCartonId === state.cartonMoveModeCartonId
+          ? result.state.selectedCartonId
+          : null,
       moveValidationMessage: null,
       createCartonMessage: null,
       selectedPackedItemId: selectedItemWasDeleted ? null : state.selectedPackedItemId,
@@ -224,20 +229,31 @@ export const usePackingStore = create<PackingState>((set, get) => ({
       set({ moveValidationMessage: reason });
       return;
     }
-    const newState = commitCartonPosition(state, cartonId, position);
-    if (newState === state) return;
-    set({ ...newState, moveValidationMessage: null, undoSnapshot: createUndoSnapshot(state, 'Перемещение коробки') });
+    const result = commitCartonPosition(state, cartonId, position);
+    if (!result.ok) {
+      set({ moveValidationMessage: result.reason });
+      return;
+    }
+    set({
+      ...result.state,
+      moveValidationMessage: null,
+      undoSnapshot: createUndoSnapshot(state, 'Перемещение коробки'),
+    });
   },
 
   rotateSelectedCarton90: () => {
     const state = get();
     if (!state.selectedCartonId) return;
-    const newState = rotateCarton90(state, state.selectedCartonId);
-    if (newState === state) {
-      set({ moveValidationMessage: 'Нельзя повернуть коробку: в текущей позиции недостаточно места.' });
+    const result = rotateCarton90(state, state.selectedCartonId);
+    if (!result.ok) {
+      set({ moveValidationMessage: result.reason });
       return;
     }
-    set({ ...newState, moveValidationMessage: null, undoSnapshot: createUndoSnapshot(state, 'Поворот коробки') });
+    set({
+      ...result.state,
+      moveValidationMessage: null,
+      undoSnapshot: createUndoSnapshot(state, 'Поворот коробки'),
+    });
   },
 
   setMoveValidationMessage: (message: string | null) => {

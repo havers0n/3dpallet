@@ -23,6 +23,8 @@ export interface PlacedItem {
   item: Item;
   /** position within carton in cm [x, y, z] */
   position: [number, number, number];
+  /** actual packed orientation dimensions in cm [width, height, depth] */
+  dimensions?: [number, number, number];
 }
 
 export interface CartonInstance {
