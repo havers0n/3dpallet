@@ -16,9 +16,13 @@ export function PackingStationPage() {
   const undoSnapshot = usePackingStore((s) => s.undoSnapshot);
   const cartonCount = usePackingStore((s) => s.session.pallet.cartons.length);
   const bufferCount = usePackingStore((s) => s.session.bufferItems.length);
+  const selectedCartonId = usePackingStore((s) => s.selectedCartonId);
+  const selectedBufferItemId = usePackingStore((s) => s.selectedBufferItemId);
   const packedWeight = usePackingStore(getPackedItemsWeight);
   const fillPercent = usePackingStore(getPalletFillPercent);
   const packDisabledReason = usePackingStore(getPackDisabledReason);
+  const hasSelection = Boolean(selectedCartonId || selectedBufferItemId);
+  const canShowPackButton = Boolean(selectedCartonId && selectedBufferItemId);
 
   useEffect(() => {
     hydrateDemoSession();
@@ -59,19 +63,23 @@ export function PackingStationPage() {
               </button>
             </div>
           </div>
-          <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-2 md:flex-row md:items-center">
-            <button
-              type="button"
-              onClick={packItem}
-              disabled={Boolean(packDisabledReason)}
-              className="h-11 rounded bg-green-600 px-5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 md:min-w-72"
-            >
-              Упаковать выбранный товар
-            </button>
-            <div className={`text-sm ${packDisabledReason ? 'text-slate-500' : 'text-green-700'}`}>
-              {packDisabledReason ?? 'Готово к упаковке'}
+          {hasSelection && (
+            <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-2 md:flex-row md:items-center">
+              {canShowPackButton && (
+                <button
+                  type="button"
+                  onClick={packItem}
+                  disabled={Boolean(packDisabledReason)}
+                  className="h-11 rounded bg-green-600 px-5 text-base font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-300 md:min-w-72"
+                >
+                  Упаковать выбранный товар
+                </button>
+              )}
+              <div className={`text-sm ${packDisabledReason ? 'text-slate-500' : 'text-green-700'}`}>
+                {packDisabledReason ?? 'Готово к упаковке'}
+              </div>
             </div>
-          </div>
+          )}
         </header>
         <main className="min-h-0 flex-1 p-3">
           <PackingScene />

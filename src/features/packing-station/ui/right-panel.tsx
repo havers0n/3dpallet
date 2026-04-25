@@ -22,7 +22,7 @@ export function RightPanel() {
         </TabButton>
       </div>
       <div className="h-[40vh] overflow-y-auto p-3 lg:h-full lg:p-4">
-        <div className="hidden space-y-6 lg:block">
+        <div className="hidden space-y-4 lg:block">
           <PresetList />
           <BufferList />
           <SelectedCartonPanel />
