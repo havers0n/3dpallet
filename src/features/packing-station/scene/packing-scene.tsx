@@ -84,7 +84,7 @@ function CameraHud({
   onResetView: () => void;
 }) {
   return (
-    <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-2 rounded-md border border-white/10 bg-slate-950/70 p-2 shadow-lg backdrop-blur">
+    <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-1.5 rounded-md border border-white/10 bg-slate-950/70 p-1.5 shadow-lg backdrop-blur">
       <CameraButton active={cameraMode === 'iso'} onClick={() => onCameraModeChange('iso')}>
         Изо
       </CameraButton>
@@ -97,7 +97,7 @@ function CameraHud({
       <button
         type="button"
         onClick={onResetView}
-        className="rounded border border-slate-500 px-2.5 py-1 text-xs font-medium text-slate-100 transition-colors hover:border-white hover:bg-white/10"
+        className="rounded border border-slate-500 px-2 py-1 text-xs font-medium text-slate-100 transition-colors hover:border-white hover:bg-white/10"
       >
         Сброс вида
       </button>
@@ -118,7 +118,7 @@ function CameraButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
+      className={`rounded px-2 py-1 text-xs font-semibold transition-colors ${
         active
           ? 'bg-sky-400 text-slate-950'
           : 'border border-slate-500 text-slate-100 hover:border-white hover:bg-white/10'

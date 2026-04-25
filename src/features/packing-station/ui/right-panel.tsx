@@ -9,7 +9,7 @@ export function RightPanel() {
   const [activeTab, setActiveTab] = useState<PanelTab>('presets');
 
   return (
-    <aside className="max-h-[44vh] overflow-hidden border-t border-slate-200 bg-white lg:max-h-none lg:w-96 lg:border-l lg:border-t-0">
+    <aside className="min-h-0 shrink-0 overflow-hidden border-t border-slate-200 bg-white lg:h-full lg:w-80 lg:border-l lg:border-t-0 2xl:w-[340px]">
       <div className="flex border-b border-slate-200 lg:hidden">
         <TabButton active={activeTab === 'presets'} onClick={() => setActiveTab('presets')}>
           Коробки
@@ -21,7 +21,7 @@ export function RightPanel() {
           Выбор
         </TabButton>
       </div>
-      <div className="h-full overflow-y-auto p-4">
+      <div className="h-[40vh] overflow-y-auto p-3 lg:h-full lg:p-4">
         <div className="hidden space-y-6 lg:block">
           <PresetList />
           <BufferList />
